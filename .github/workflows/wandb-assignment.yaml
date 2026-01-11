@@ -9,7 +9,8 @@ permissions:
 
 jobs:
   analyze-runs:
-    runs-on: ubuntu-latest
+    #runs-on: ubuntu-latest
+    runs-on: runner-22 #Self hosted runner
     if: |
       github.event.issue.pull_request != null && 
       contains(github.event.comment.body, '/wandb')
