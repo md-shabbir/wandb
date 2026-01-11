@@ -1,0 +1,74 @@
+name: wandb-comparison-workflow
+on:
+  issue_comment:
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+
+jobs:
+  analyze-runs:
+    runs-on: ubuntu-latest
+    if: |
+      github.event.issue.pull_request != null && 
+      contains(github.event.comment.body, '/wandb')
+    
+    steps:
+      - name: Clone repository
+        uses: actions/checkout@v3
+
+      - name: Setup Python dependencies
+        run: |
+          pip install ghapi wandb
+
+      - name: Extract run identifier from comment
+        id: extract-run-id
+        shell: python
+        env:
+          COMMENT_TEXT: ${{ github.event.comment.body }}
+        run: |
+          import re
+          import os
+          
+          comment_body = os.getenv('COMMENT_TEXT', '')
+          pattern = re.compile(r'/wandb\s+(\S+)')
+          result = pattern.search(comment_body)
+          
+          output_file = os.environ['GITHUB_OUTPUT']
+          with open(output_file, 'a') as f:
+            if result:
+              f.write(f'EXTRACTION_SUCCESS=true\n')
+              f.write(f'EXTRACTED_RUN_ID={result.group(1)}\n')
+            else:
+              f.write(f'EXTRACTION_SUCCESS=false\n')
+
+      - name: Build comparison report
+        if: steps.extract-run-id.outputs.EXTRACTION_SUCCESS == 'true'
+        id: build-report
+        env:
+          WANDB_ENTITY: sbr543-oc
+          WANDB_PROJECT: project-1
+          BASELINE_TAG: baseline
+          RUN_ID: ${{ steps.extract-run-id.outputs.EXTRACTED_RUN_ID }}
+          WANDB_API_KEY: ${{ secrets.WANDB_API_KEY }}
+          CI: 'true'
+        run: |
+          python ./src/compare_runs.py
+
+      - name: Post report link to PR
+        uses: actions/github-script@v6
+        if: steps.build-report.outcome == 'success'
+        env:
+          REPORT_LINK: "${{ steps.build-report.outputs.REPORT_URL }}"
+        with:
+          script: |
+            const reportUrl = process.env.REPORT_LINK;
+            const commentBody = `View the comparison between the target run and baseline [here](${reportUrl})`;
+            
+            await github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: commentBody
+            });
