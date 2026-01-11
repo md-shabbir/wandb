@@ -20,7 +20,7 @@ jobs:
 
       - name: Setup Python dependencies
         run: |
-          pip install ghapi wandb
+          pip install wandb==0.17.0
 
       - name: Extract run identifier from comment
         id: extract-run-id
